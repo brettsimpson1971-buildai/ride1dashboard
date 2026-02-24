@@ -5,8 +5,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy files
-COPY requirements.txt ./  
-COPY app.py ./  
+COPY requirements.txt ./
+COPY ride1dashboard/app.py ./
 
 # Install requirements
 RUN pip install --upgrade pip
