@@ -42,4 +42,4 @@ st.markdown("---")
 # ============================================
 # 5. LEAK DETECTOR - FORENSIC VIEW
 # ============================================
-st.subheader("🚨 L
+st.subheader("🚨 LEAK DETECTOR: SUSPICIOUS VARIANCE")
