@@ -46,13 +46,10 @@ with st.sidebar:
     st.markdown("### 🔍 FORENSIC SEARCH")
     search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
     search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
-    
     st.markdown("---")
     st.markdown("### DASHBOARD VIEW")
     view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
-    
     st.markdown("---")
-    # Logo at the bottom of the sidebar so it doesn't push inputs around
     st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
     st.caption("Ride 1 Motorsports Inventory Control")
 
@@ -60,23 +57,43 @@ with st.sidebar:
 st.title("🏁 RIDE 1: INVENTORY COMMAND CENTER")
 st.markdown("---")
 
-# 5. GOD VIEW (Mock KPIs for Stress Test)
+# 5. LIVE KPI ENGINE (This replaces the fake 4.2M numbers)
+try:
+    # Query 1: Total Parts on Hand
+    inv_stats = get_data("SELECT SUM(quantity_on_hand) as total_qty, COUNT(*) as total_skus FROM inventory;")
+    total_parts = int(inv_stats['total_qty'].iloc[0] or 0)
+    total_skus = int(inv_stats['total_skus'].iloc[0] or 0)
+    
+    # Query 2: Accessory Count (Parts starting with ACC)
+    acc_stats = get_data("SELECT COUNT(*) as acc_count FROM inventory WHERE part_number LIKE 'ACC%';")
+    total_accessories = int(acc_stats['acc_count'].iloc[0] or 0)
+    
+    # Query 3: Open Leaks Count
+    leak_stats = get_data("SELECT COUNT(*) as leak_count FROM receiving_log WHERE (resolution_status = 'OPEN' OR resolution_status IS NULL);")
+    open_leaks = int(leak_stats['leak_count'].iloc[0] or 0)
+
+except Exception as e:
+    total_parts = 0
+    total_skus = 0
+    total_accessories = 0
+    open_leaks = 0
+
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("TOTAL PARTS ON HAND", "1,042,381", "+12% vs Last Week")
+    st.metric("TOTAL PARTS ON HAND", f"{total_parts:,}", f"{total_skus:,} SKUs Active")
 with col2:
-    st.metric("TOTAL INVENTORY VALUE", "$4.2M", "-$12,400 (Leak Detected)")
+    # We don't have 'cost' in the mock yet, so we'll show SKU count as the 'Value' proof
+    st.metric("LIVE INVENTORY VALUE", "CALCULATING...", f"Tracking {total_skus:,} Items")
 with col3:
-    st.metric("ACCESSORY BLEED", "14 Items", "-$2,140")
+    st.metric("ACCESSORY COUNT", f"{total_accessories:,}", "Items in Showroom")
 with col4:
-    st.metric("LAZY TECH ALERTS", "8", "Requires Review")
+    st.metric("ACTIVE LEAKS", open_leaks, "Requires Verdict" if open_leaks > 0 else "System Clean")
 
 st.markdown("---")
 
 # 6. LEAK DETECTOR
 st.subheader("🚨 LEAK DETECTOR: SUSPICIOUS VARIANCE")
 
-# Build Query based on View Mode
 if view_mode == "OPEN LEAKS (Active)":
     sql = "SELECT * FROM receiving_log WHERE ((variance_amount IS NOT NULL AND variance_amount < 0) OR (severity_level IN ('MEDIUM', 'HIGH')) OR (employee_id IS NULL) OR (employee_id = '')) AND (resolution_status = 'OPEN' OR resolution_status IS NULL) ORDER BY timestamp DESC LIMIT 100;"
 else:
@@ -84,7 +101,6 @@ else:
 
 leaks = get_data(sql)
 
-# Apply Sidebar Filters
 if not leaks.empty and "Error" not in leaks.columns:
     if search_part:
         leaks = leaks[leaks['part_number'].astype(str).str.contains(search_part, case=False, na=False)]
@@ -92,21 +108,18 @@ if not leaks.empty and "Error" not in leaks.columns:
         leaks = leaks[leaks['employee_id'].astype(str).str.contains(search_emp, case=False, na=False)]
 
 if "Error" in leaks.columns:
-    st.error("Database connection issue. Check your secrets.")
+    st.error("Database connection issue.")
 elif leaks.empty:
-    st.success("No suspicious movements found. System is clean.")
+    st.success("No suspicious movements found.")
 else:
-    # Color Coding Logic
     def color_severity(val):
         color = 'white'
-        if val == 'HIGH': color = '#ff4b4b' # Red
-        elif val == 'MEDIUM': color = '#ffa500' # Orange
-        elif val == 'LOW': color = '#2e7d32' # Green
+        if val == 'HIGH': color = '#ff4b4b'
+        elif val == 'MEDIUM': color = '#ffa500'
+        elif val == 'LOW': color = '#2e7d32'
         return f'background-color: {color}; color: white; font-weight: bold'
 
-    # Apply styling to the dataframe
-    styled_leaks = leaks.style.applymap(color_severity, subset=['severity_level'])
-    st.dataframe(styled_leaks, use_container_width=True, hide_index=True)
+    st.dataframe(leaks.style.applymap(color_severity, subset=['severity_level']), use_container_width=True, hide_index=True)
     
     st.markdown("### 🔍 DRILL-DOWN & VERDICTS")
     VERDICTS = ["-- Select Verdict --", "Legitimate Adjustment", "Human Error / Training Issue", "Suspicious / Under Watch", "Confirmed Theft", "Resolved with Note"]
