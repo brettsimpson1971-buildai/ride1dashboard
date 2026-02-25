@@ -41,11 +41,22 @@ def run_command(query, params=None):
         st.error(f"Database error: {str(e)}")
         return False
 
-# 3. HEADER
-st.title("RIDE 1: INVENTORY COMMAND CENTER")
+# 3. SIDEBAR - Branding & Search
+with st.sidebar:
+    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
+    st.markdown("### DASHBOARD VIEW")
+    view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
+    
+    st.markdown("---")
+    st.markdown("### FORENSIC SEARCH")
+    search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
+    search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
+
+# 4. HEADER
+st.title("🏁 RIDE 1: INVENTORY COMMAND CENTER")
 st.markdown("---")
 
-# 4. GOD VIEW (Top-level KPIs)
+# 5. GOD VIEW (Mock KPIs for Stress Test)
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("TOTAL PARTS ON HAND", "1,042,381", "+12% vs Last Week")
@@ -58,26 +69,40 @@ with col4:
 
 st.markdown("---")
 
-# 5. LEAK DETECTOR
-st.subheader("LEAK DETECTOR: SUSPICIOUS VARIANCE")
-view_mode = st.radio("View Mode:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"], horizontal=True)
+# 6. LEAK DETECTOR
+st.subheader("🚨 LEAK DETECTOR: SUSPICIOUS VARIANCE")
 
+# Build Query based on View Mode
 if view_mode == "OPEN LEAKS (Active)":
-    leak_query = "SELECT id, part_number, description, quantity, employee_id, movement_type, location_bin, variance_amount, severity_level, timestamp, resolution_status FROM receiving_log WHERE ((variance_amount IS NOT NULL AND variance_amount < 0) OR (severity_level IN ('MEDIUM', 'HIGH')) OR (employee_id IS NULL) OR (employee_id = '')) AND (resolution_status = 'OPEN' OR resolution_status IS NULL) ORDER BY timestamp DESC LIMIT 50;"
+    sql = "SELECT * FROM receiving_log WHERE ((variance_amount IS NOT NULL AND variance_amount < 0) OR (severity_level IN ('MEDIUM', 'HIGH')) OR (employee_id IS NULL) OR (employee_id = '')) AND (resolution_status = 'OPEN' OR resolution_status IS NULL) ORDER BY timestamp DESC LIMIT 100;"
 else:
-    leak_query = "SELECT id, part_number, description, quantity, employee_id, movement_type, variance_amount, severity_level, timestamp, resolution_status, resolution_note, resolved_by, resolved_at FROM receiving_log WHERE resolution_status NOT IN ('OPEN') AND resolution_status IS NOT NULL ORDER BY resolved_at DESC LIMIT 50;"
+    sql = "SELECT * FROM receiving_log WHERE resolution_status NOT IN ('OPEN') AND resolution_status IS NOT NULL ORDER BY resolved_at DESC LIMIT 100;"
 
-leaks = get_data(leak_query)
+leaks = get_data(sql)
+
+# Apply Sidebar Filters
+if not leaks.empty and "Error" not in leaks.columns:
+    if search_part:
+        leaks = leaks[leaks['part_number'].str.contains(search_part, case=False, na=False)]
+    if search_emp:
+        leaks = leaks[leaks['employee_id'].str.contains(search_emp, case=False, na=False)]
 
 if "Error" in leaks.columns:
-    st.error("Query failed. Check if database columns exist.")
-    st.code(leaks["Error"].iloc[0])
+    st.error("Database connection issue. Check your secrets.")
 elif leaks.empty:
-    st.success("No cases found for this view.")
+    st.success("No suspicious movements found. System is clean.")
 else:
-    st.dataframe(leaks, use_container_width=True, hide_index=True)
-    st.markdown("### Drill-Down & Verdicts")
+    # Color Coding Logic
+    def color_severity(val):
+        color = 'white'
+        if val == 'HIGH': color = '#ff4b4b' # Red
+        elif val == 'MEDIUM': color = '#ffa500' # Orange
+        elif val == 'LOW': color = '#2e7d32' # Green
+        return f'background-color: {color}; color: white; font-weight: bold'
+
+    st.dataframe(leaks.style.applymap(color_severity, subset=['severity_level']), use_container_width=True, hide_index=True)
     
+    st.markdown("### 🔍 DRILL-DOWN & VERDICTS")
     VERDICTS = ["-- Select Verdict --", "Legitimate Adjustment", "Human Error / Training Issue", "Suspicious / Under Watch", "Confirmed Theft", "Resolved with Note"]
 
     for _, row in leaks.iterrows():
@@ -95,8 +120,8 @@ else:
                 
                 if st.button("Submit Verdict", key=f"b_{row['id']}"):
                     if v_choice != "-- Select Verdict --" and v_user:
-                        sql = "UPDATE receiving_log SET resolution_status = %s, resolution_note = %s, resolved_by = %s, resolved_at = %s WHERE id = %s;"
-                        if run_command(sql, (v_choice, v_note, v_user, datetime.now(), int(row['id']))):
+                        update_sql = "UPDATE receiving_log SET resolution_status = %s, resolution_note = %s, resolved_by = %s, resolved_at = %s WHERE id = %s;"
+                        if run_command(update_sql, (v_choice, v_note, v_user, datetime.now(), int(row['id']))):
                             st.success("Case Closed. Refresh to update.")
                             st.balloons()
                     else:
@@ -106,19 +131,8 @@ else:
 
 st.markdown("---")
 
-# 6. ACCESSORY RADAR
-st.subheader("ACCESSORY RADAR")
-c1, c2 = st.columns(2)
-with c1:
-    st.write("Top Selling Accessories (Demo)")
-    st.bar_chart(pd.DataFrame({"Item": ["Shoei X-15", "Fox V3", "GoPro Hero 12"], "Sales": [12, 8, 15]}).set_index("Item"))
-with c2:
-    st.warning("Low Stock: Shoei RF-1400")
-
-st.markdown("---")
-
 # 7. AUDIT TRAIL
-st.subheader("AUDIT TRAIL: ALL MOVEMENTS")
+st.subheader("🕵️ AUDIT TRAIL: ALL MOVEMENTS")
 audit_data = get_data("SELECT * FROM receiving_log ORDER BY timestamp DESC LIMIT 50;")
 if "Error" not in audit_data.columns:
     st.dataframe(audit_data, use_container_width=True, hide_index=True)
