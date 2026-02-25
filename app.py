@@ -41,22 +41,20 @@ def run_command(query, params=None):
         st.error(f"Database error: {str(e)}")
         return False
 
-# 3. SIDEBAR - Stabilized Branding & Search
+# 3. SIDEBAR - Pinned Search & Branding
 with st.sidebar:
-    # Fixed width logo to prevent jumping
-    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", width=200)
-    st.markdown("<​br>", unsafe_allow_html=True) # Spacer
+    st.markdown("### 🔍 FORENSIC SEARCH")
+    search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
+    search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
     
+    st.markdown("---")
     st.markdown("### DASHBOARD VIEW")
     view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
     
     st.markdown("---")
-    st.markdown("### FORENSIC SEARCH")
-    # Using a container to keep search fields stable
-    search_container = st.container()
-    with search_container:
-        search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
-        search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
+    # Logo at the bottom of the sidebar so it doesn't push inputs around
+    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
+    st.caption("Ride 1 Motorsports Inventory Control")
 
 # 4. HEADER
 st.title("🏁 RIDE 1: INVENTORY COMMAND CENTER")
