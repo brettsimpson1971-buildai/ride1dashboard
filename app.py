@@ -43,6 +43,8 @@ def run_command(query, params=None):
 
 # 3. SIDEBAR
 with st.sidebar:
+    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
+    st.markdown("---")
     st.markdown("### 🔍 FORENSIC SEARCH")
     search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
     search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
@@ -50,36 +52,48 @@ with st.sidebar:
     st.markdown("### DASHBOARD VIEW")
     view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
     st.markdown("---")
-    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
-    st.caption("Ride 1 Motorsports Inventory Control")
+    st.caption("Ride 1 Motorsports Inventory Control v1.2")
 
-# 4. HEADER
-st.title("🏁 RIDE 1: INVENTORY COMMAND CENTER")
+# 4. HEADER & BRANDING
+head_col1, head_col2 = st.columns([1, 4])
+with head_col1:
+    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", width=150)
+with head_col2:
+    st.title("INVENTORY COMMAND CENTER")
+    st.subheader("Forensic Audit & Loss Prevention")
+
 st.markdown("---")
 
 # 5. LIVE KPI ENGINE
 try:
+    # Total parts and SKUs
     inv_stats = get_data("SELECT COUNT(*) AS total_skus, COALESCE(SUM(quantity_on_hand),0) AS total_qty FROM inventory;")
     total_skus = int(inv_stats["total_skus"].iloc[0] or 0)
     total_parts = int(inv_stats["total_qty"].iloc[0] or 0)
 
+    # Calculate Value (Assuming a mock average cost of $25 per unit for now until cost column is populated)
+    # In a real scenario, we would do: SELECT SUM(quantity_on_hand * cost_per_unit) FROM inventory
+    total_value = total_parts * 25.00 
+
+    # Accessories
     acc_stats = get_data("SELECT COUNT(*) AS acc_count FROM inventory WHERE part_number LIKE 'ACC%';")
     total_accessories = int(acc_stats["acc_count"].iloc[0] or 0)
 
+    # Open leaks
     leak_stats = get_data("SELECT COUNT(*) AS leak_count FROM receiving_log WHERE (resolution_status = 'OPEN' OR resolution_status IS NULL);")
     open_leaks = int(leak_stats["leak_count"].iloc[0] or 0)
 except:
-    total_skus, total_parts, total_accessories, open_leaks = 0, 0, 0, 0
+    total_skus, total_parts, total_value, total_accessories, open_leaks = 0, 0, 0, 0, 0
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("TOTAL PARTS ON HAND", f"{total_parts:,}", f"{total_skus:,} SKUs Active")
 with col2:
-    st.metric("LIVE INVENTORY VALUE", "CALCULATING...", f"Tracking {total_skus:,} Items")
+    st.metric("EST. INVENTORY VALUE", f"${total_value:,.2f}", "Avg $25/unit")
 with col3:
     st.metric("ACCESSORY COUNT", f"{total_accessories:,}", "Items in Showroom")
 with col4:
-    st.metric("ACTIVE LEAKS", open_leaks, "Requires Verdict" if open_leaks > 0 else "System Clean")
+    st.metric("ACTIVE LEAKS", open_leaks, "Requires Verdict" if open_leaks > 0 else "System Clean", delta_color="inverse")
 
 st.markdown("---")
 
@@ -124,6 +138,6 @@ if not leaks.empty and "Error" not in leaks.columns:
 
 st.markdown("---")
 st.subheader("🕵️ AUDIT TRAIL: ALL MOVEMENTS")
-audit_data = get_data("SELECT * FROM receiving_log ORDER BY timestamp DESC LIMIT 50;")
+audit_data = get_data("SELECT  FROM receiving_log ORDER BY timestamp DESC LIMIT 50;")
 if "Error" not in audit_data.columns:
     st.dataframe(audit_data, use_container_width=True, hide_index=True)
