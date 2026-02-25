@@ -41,16 +41,22 @@ def run_command(query, params=None):
         st.error(f"Database error: {str(e)}")
         return False
 
-# 3. SIDEBAR - Branding & Search
+# 3. SIDEBAR - Stabilized Branding & Search
 with st.sidebar:
-    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
+    # Fixed width logo to prevent jumping
+    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", width=200)
+    st.markdown("<​br>", unsafe_allow_html=True) # Spacer
+    
     st.markdown("### DASHBOARD VIEW")
     view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
     
     st.markdown("---")
     st.markdown("### FORENSIC SEARCH")
-    search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
-    search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
+    # Using a container to keep search fields stable
+    search_container = st.container()
+    with search_container:
+        search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
+        search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
 
 # 4. HEADER
 st.title("🏁 RIDE 1: INVENTORY COMMAND CENTER")
@@ -83,9 +89,9 @@ leaks = get_data(sql)
 # Apply Sidebar Filters
 if not leaks.empty and "Error" not in leaks.columns:
     if search_part:
-        leaks = leaks[leaks['part_number'].str.contains(search_part, case=False, na=False)]
+        leaks = leaks[leaks['part_number'].astype(str).str.contains(search_part, case=False, na=False)]
     if search_emp:
-        leaks = leaks[leaks['employee_id'].str.contains(search_emp, case=False, na=False)]
+        leaks = leaks[leaks['employee_id'].astype(str).str.contains(search_emp, case=False, na=False)]
 
 if "Error" in leaks.columns:
     st.error("Database connection issue. Check your secrets.")
@@ -100,7 +106,9 @@ else:
         elif val == 'LOW': color = '#2e7d32' # Green
         return f'background-color: {color}; color: white; font-weight: bold'
 
-    st.dataframe(leaks.style.applymap(color_severity, subset=['severity_level']), use_container_width=True, hide_index=True)
+    # Apply styling to the dataframe
+    styled_leaks = leaks.style.applymap(color_severity, subset=['severity_level'])
+    st.dataframe(styled_leaks, use_container_width=True, hide_index=True)
     
     st.markdown("### 🔍 DRILL-DOWN & VERDICTS")
     VERDICTS = ["-- Select Verdict --", "Legitimate Adjustment", "Human Error / Training Issue", "Suspicious / Under Watch", "Confirmed Theft", "Resolved with Note"]
