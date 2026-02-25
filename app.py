@@ -9,16 +9,17 @@ st.set_page_config(page_title="RIDE 1 COMMAND CENTER", layout="wide")
 # 2. Connect to the Zaptask Engine
 def get_data(query):
     try:
-     conn = psycopg2.connect(
-    host=st.secrets['DB_HOST'],
-    database=st.secrets['DB_NAME'],
-    user=st.secrets['DB_USER'],
-    password=st.secrets['DB_PASSWORD'],
-    port=st.secrets['DB_PORT']
-)
-df = pd.read_sql(query, conn)
-conn.close()
-        return df
+    try:
+    conn = psycopg2.connect(
+        host=st.secrets['DB_HOST'],
+        database=st.secrets['DB_NAME'],
+        user=st.secrets['DB_USER'],
+        password=st.secrets['DB_PASSWORD'],
+        port=st.secrets['DB_PORT']
+    )
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
     except Exception as e:
         return pd.DataFrame({"Error": [str(e)]})
 
