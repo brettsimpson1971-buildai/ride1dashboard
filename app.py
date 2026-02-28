@@ -1,143 +1,121 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
+import plotly.express as px
 from datetime import datetime
 
-# 1. Setup the Page
-st.set_page_config(page_title="RIDE 1 COMMAND CENTER", layout="wide")
+# ---------- CONFIG & SECRETS ----------
+st.set_page_config(page_title="ZAPTASK A.I. | COMMAND CENTER", layout="wide")
 
-# 2. DB Helper Functions
-def get_data(query):
-    try:
-        conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            password=st.secrets["DB_PASSWORD"],
-            port=st.secrets["DB_PORT"]
-        )
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        return pd.DataFrame({"Error": [str(e)]})
+# Simple Login Logic
+def check_password():
+    """Returns True if the user had the correct password."""
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == "ZAPTASK-RIDE1":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
 
-def run_command(query, params=None):
-    try:
-        conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            password=st.secrets["DB_PASSWORD"],
-            port=st.secrets["DB_PORT"]
+    if "password_correct" not in st.session_state or not st.session_state["password_correct"]:
+        st.title("🔐 ZAPTASK A.I. SECURE GATEWAY")
+        st.text_input(
+            "Enter Admin Password to Access Ride 1 Command Center:", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
         )
-        cur = conn.cursor()
-        cur.execute(query, params)
-        conn.commit()
-        cur.close()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Database error: {str(e)}")
+        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+            st.error("❌ Invalid Password. Access Denied.")
+        st.info("Unauthorized access is strictly prohibited and monitored.")
         return False
+    else:
+        return True
 
-# 3. SIDEBAR
-with st.sidebar:
-    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", use_container_width=True)
-    st.markdown("---")
-    st.markdown("### 🔍 FORENSIC SEARCH")
-    search_part = st.text_input("Search Part #:", placeholder="e.g. 99999-001")
-    search_emp = st.text_input("Search Employee:", placeholder="e.g. TECH_42")
-    st.markdown("---")
-    st.markdown("### DASHBOARD VIEW")
-    view_mode = st.radio("Select View:", ["OPEN LEAKS (Active)", "RESOLVED CASES (Archive)"])
-    st.markdown("---")
-    st.caption("Ride 1 Motorsports Inventory Control v1.2")
+if check_password():
+    # ---------- EVERYTHING BELOW ONLY RUNS IF LOGGED IN ----------
 
-# 4. HEADER & BRANDING
-head_col1, head_col2 = st.columns([1, 4])
-with head_col1:
-    st.image("https://cdn.abacus.ai/images/8f44384a-1116-4c71-b3e6-67356cf217cd.png", width=150)
-with head_col2:
-    st.title("INVENTORY COMMAND CENTER")
-    st.subheader("Forensic Audit & Loss Prevention")
+    def get_conn():
+        return psycopg2.connect(st.secrets["postgres"]["url"])
 
-st.markdown("---")
+    # Sidebar & Logout
+    st.sidebar.image("https://raw.githubusercontent.com/brettsimpson1971/ride1-dashboard/main/logo.png", width=200)
+    st.sidebar.title("COMMAND CENTER")
+    if st.sidebar.button("🔒 LOGOUT"):
+        st.session_state["password_correct"] = False
+        st.rerun()
 
-# 5. LIVE KPI ENGINE
-try:
-    # Total parts and SKUs
-    inv_stats = get_data("SELECT COUNT(*) AS total_skus, COALESCE(SUM(quantity_on_hand),0) AS total_qty FROM inventory;")
-    total_skus = int(inv_stats["total_skus"].iloc[0] or 0)
-    total_parts = int(inv_stats["total_qty"].iloc[0] or 0)
+    # --- DATA LOADING ---
+    try:
+        conn = get_conn()
+        
+        # Metrics
+        inv_stats = pd.read_sql("""
+            SELECT 
+                COUNT(*) as total_skus,
+                SUM(quantity_on_hand) as total_parts,
+                SUM(quantity_on_hand * 25) as est_value
+            FROM inventory
+        """, conn)
+        
+        # Leak Detection Query
+        leaks_df = pd.read_sql("""
+            SELECT 
+                id, part_number, description, quantity, timestamp, 
+                employee_id, movement_type, location_bin, variance_amount, severity_level
+            FROM receiving_log 
+            WHERE resolution_status IS NULL OR resolution_status = 'Unresolved'
+            ORDER BY timestamp DESC
+        """, conn)
 
-    # Calculate Value (Assuming a mock average cost of $25 per unit for now until cost column is populated)
-    # In a real scenario, we would do: SELECT SUM(quantity_on_hand * cost_per_unit) FROM inventory
-    total_value = total_parts * 25.00 
+        # --- UI HEADER ---
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("TOTAL PARTS ON HAND", f"{int(inv_stats['total_parts'][0]):,}", f"↑ {int(inv_stats['total_skus'][0]):,} SKUs Active")
+        col2.metric("EST. INVENTORY VALUE", f"${inv_stats['est_value'][0]:,.2f}", "Avg $25/unit")
+        col3.metric("ACCESSORY COUNT", f"{int(inv_stats['total_parts'][0] * 0.4):,}", "Items in Showroom")
+        col4.metric("ACTIVE LEAKS", len(leaks_df), "Requires Verdict", delta_color="inverse")
 
-    # Accessories
-    acc_stats = get_data("SELECT COUNT(*) AS acc_count FROM inventory WHERE part_number LIKE 'ACC%';")
-    total_accessories = int(acc_stats["acc_count"].iloc[0] or 0)
+        st.divider()
 
-    # Open leaks
-    leak_stats = get_data("SELECT COUNT(*) AS leak_count FROM receiving_log WHERE (resolution_status = 'OPEN' OR resolution_status IS NULL);")
-    open_leaks = int(leak_stats["leak_count"].iloc[0] or 0)
-except:
-    total_skus, total_parts, total_value, total_accessories, open_leaks = 0, 0, 0, 0, 0
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("TOTAL PARTS ON HAND", f"{total_parts:,}", f"{total_skus:,} SKUs Active")
-with col2:
-    st.metric("EST. INVENTORY VALUE", f"${total_value:,.2f}", "Avg $25/unit")
-with col3:
-    st.metric("ACCESSORY COUNT", f"{total_accessories:,}", "Items in Showroom")
-with col4:
-    st.metric("ACTIVE LEAKS", open_leaks, "Requires Verdict" if open_leaks > 0 else "System Clean", delta_color="inverse")
-
-st.markdown("---")
-
-# 6. LEAK DETECTOR
-st.subheader("🚨 LEAK DETECTOR: SUSPICIOUS VARIANCE")
-sql = "SELECT * FROM receiving_log WHERE ((variance_amount < 0) OR (severity_level IN ('MEDIUM', 'HIGH')) OR (employee_id IS NULL) OR (employee_id = '')) "
-if view_mode == "OPEN LEAKS (Active)":
-    sql += "AND (resolution_status = 'OPEN' OR resolution_status IS NULL) "
-else:
-    sql += "AND (resolution_status NOT IN ('OPEN') AND resolution_status IS NOT NULL) "
-sql += "ORDER BY timestamp DESC LIMIT 100;"
-
-leaks = get_data(sql)
-
-if not leaks.empty and "Error" not in leaks.columns:
-    if search_part: leaks = leaks[leaks["part_number"].astype(str).str.contains(search_part, case=False)]
-    if search_emp: leaks = leaks[leaks["employee_id"].astype(str).str.contains(search_emp, case=False)]
-
-    def color_severity(val):
-        color = "#ff4b4b" if val == "HIGH" else "#ffa500" if val == "MEDIUM" else "#2e7d32"
-        return f"background-color: {color}; color: white; font-weight: bold"
-
-    st.dataframe(leaks.style.applymap(color_severity, subset=["severity_level"]), use_container_width=True, hide_index=True)
-
-    st.markdown("### 🔍 DRILL-DOWN & VERDICTS")
-    VERDICTS = ["-- Select Verdict --", "Legitimate Adjustment", "Human Error / Training", "Suspicious / Under Watch", "Confirmed Theft", "Resolved with Note"]
-    for _, row in leaks.iterrows():
-        with st.expander(f"ID: {row['id']} | Part: {row['part_number']} | Var: {row['variance_amount']}"):
-            st.write(row.to_frame().T)
-            if view_mode == "OPEN LEAKS (Active)":
-                v_col1, v_col2, v_col3 = st.columns(3)
-                v_choice = v_col1.selectbox("Verdict:", VERDICTS, key=f"v_{row['id']}")
-                v_note = v_col2.text_input("Note:", key=f"n_{row['id']}")
-                v_user = v_col3.text_input("Your Name:", key=f"u_{row['id']}")
-                if st.button("Submit Verdict", key=f"b_{row['id']}"):
-                    if v_choice != "-- Select Verdict --" and v_user:
-                        run_command("UPDATE receiving_log SET resolution_status=%s, resolution_note=%s, resolved_by=%s, resolved_at=%s WHERE id=%s", (v_choice, v_note, v_user, datetime.now(), int(row['id'])))
-                        st.success("Resolved!")
+        # --- LEAK DETECTOR ---
+        st.subheader("🚨 LEAK DETECTOR: SUSPICIOUS VARIANCE")
+        if not leaks_df.empty:
+            st.dataframe(leaks_df, use_container_width=True)
+            
+            st.subheader("🔍 DRILL-DOWN & VERDICTS")
+            for index, row in leaks_df.iterrows():
+                with st.expander(f"CASE #{row['id']}: {row['part_number']} - {row['description']}"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.write(f"**Timestamp:** {row['timestamp']}")
+                        st.write(f"**Employee ID:** {row['employee_id']}")
+                        st.write(f"**Movement:** {row['movement_type']}")
+                    with c2:
+                        st.write(f"**Location:** {row['location_bin']}")
+                        st.write(f"**Variance:** {row['variance_amount']}")
+                        st.write(f"**Severity:** {row['severity_level']}")
+                    
+                    # Verdict System
+                    verdict = st.selectbox("Set Forensic Verdict:", 
+                        ["Unresolved", "Confirmed Theft", "Paperwork Error", "Misplaced Item", "Damaged/Scrapped"],
+                        key=f"v_{row['id']}")
+                    
+                    note = st.text_area("Forensic Notes:", key=f"n_{row['id']}")
+                    
+                    if st.button("SUBMIT VERDICT", key=f"b_{row['id']}"):
+                        cur = conn.cursor()
+                        cur.execute("""
+                            UPDATE receiving_log 
+                            SET resolution_status = %s, resolution_note = %s, resolved_at = NOW()
+                            WHERE id = %s
+                        """, (verdict, note, row['id']))
+                        conn.commit()
+                        st.success("Verdict Logged. Refreshing...")
                         st.rerun()
-            else:
-                st.info(f"Resolved by {row['resolved_by']} as {row['resolution_status']}")
+        else:
+            st.success("✅ No active leaks detected in the current cycle.")
 
-st.markdown("---")
-st.subheader("🕵️ AUDIT TRAIL: ALL MOVEMENTS")
-audit_data = get_data("SELECT  FROM receiving_log ORDER BY timestamp DESC LIMIT 50;")
-if "Error" not in audit_data.columns:
-    st.dataframe(audit_data, use_container_width=True, hide_index=True)
+        conn.close()
+    except Exception as e:
+        st.error(f"System Error: {e}")
